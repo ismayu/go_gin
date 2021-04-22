@@ -3,12 +3,12 @@ package v1
 import (
 	"github.com/EDDYCJY/go-gin-example/models"
 	"github.com/EDDYCJY/go-gin-example/pkg/e"
+	"github.com/EDDYCJY/go-gin-example/pkg/logging"
 	"github.com/EDDYCJY/go-gin-example/pkg/setting"
 	"github.com/EDDYCJY/go-gin-example/pkg/util"
 	"github.com/astaxie/beego/validation"
 	"github.com/gin-gonic/gin"
 	"github.com/unknwon/com"
-	"log"
 	"net/http"
 )
 
@@ -20,22 +20,22 @@ func GetArticle(c *gin.Context) {
 
 	code := e.INVALID_PARAMS
 	var data interface{}
-	if ! valid.HasErrors(){
-		if models.ExistTagByID(id){
+	if !valid.HasErrors() {
+		if models.ExistArticleByID(id) {
 			data = models.GetArticle(id)
 			code = e.SUCCESS
-		}else {
+		} else {
 			code = e.ERROR_NOT_EXIST_ARTICLE
 		}
-	}else {
-		for _, err := range valid.Errors{
-			log.Printf("err.key: %s, err.message: %s", err.Key, err.Message)
+	} else {
+		for _, err := range valid.Errors {
+			logging.Info(err.Key, err.Message)
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"code" : code,
-		"msg"  : e.GetMsg(code),
-		"data" : data,
+		"code": code,
+		"msg":  e.GetMsg(code),
+		"data": data,
 	})
 }
 
@@ -60,17 +60,22 @@ func GetArticles(c *gin.Context) {
 		valid.Min(tagId, 1, "tag_id").Message("标签ID必须大于0")
 	}
 	code := e.INVALID_PARAMS
-	if !valid.HasErrors(){
+	if !valid.HasErrors() {
 		code = e.SUCCESS
 		data["list"] = models.GetArticles(util.GetPage(c), setting.PageSize, maps)
 		data["total"] = models.GetArticleTotal(maps)
-		c.JSON(http.StatusOK, gin.H{
-			"code" : code,
-			"msg"  : e.GetMsg(code),
-			"data" : data,
-		})
+	} else {
+		for _, err := range valid.Errors {
+			logging.Info(err.Key, err.Message)
+		}
 	}
+	c.JSON(http.StatusOK, gin.H{
+		"code": code,
+		"msg":  e.GetMsg(code),
+		"data": data,
+	})
 }
+
 //新增文章
 func AddArticle(c *gin.Context) {
 	tagID := com.StrTo(c.Query("tag_id")).MustInt()
@@ -90,7 +95,7 @@ func AddArticle(c *gin.Context) {
 	valid.Range(state, 0, 1, "state").Message("状态只允许为0或者1")
 
 	code := e.INVALID_PARAMS
-	if ! valid.HasErrors(){
+	if !valid.HasErrors() {
 		if models.ExistTagByID(tagID) {
 			data := make(map[string]interface{})
 			data["tag_id"] = tagID
@@ -102,27 +107,95 @@ func AddArticle(c *gin.Context) {
 
 			models.AddArticle(data)
 			code = e.SUCCESS
-		}else {
+		} else {
 			code = e.ERROR_NOT_EXIST_TAG
 		}
-	}else {
-		for _, err := range valid.Errors{
-			log.Printf("err.key: %s, err.message: %s", err.Key, err.Message)
+	} else {
+		for _, err := range valid.Errors {
+			logging.Info(err.Key, err.Message)
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"code" : code,
-		"msg"  : e.GetMsg(code),
-		"data" : make(map[string]interface{}),
+		"code": code,
+		"msg":  e.GetMsg(code),
+		"data": make(map[string]interface{}),
 	})
 }
 
 //修改文章
-func EditArticle(c *gin.Context)  {
-	
+func EditArticle(c *gin.Context) {
+	valid := validation.Validation{}
+	id := com.StrTo(c.Param("id")).MustInt()
+	tagId := com.StrTo(c.Query("tag_id")).MustInt()
+	title := c.Query("title")
+	desc := c.Query("desc")
+	content := c.Query("content")
+	modifiedBy := c.Query("modified_by")
+
+	var state int = -1
+	if arg := c.Query("state"); arg != "" {
+		state = com.StrTo(arg).MustInt()
+		valid.Range(state, 0, 1, "state").Message("状态只允许为0或者1")
+	}
+
+	code := e.INVALID_PARAMS
+	if !valid.HasErrors() {
+		if models.ExistArticleByID(id) {
+			if models.ExistTagByID(tagId) {
+				data := make(map[string]interface{})
+				if tagId > 0 {
+					data["title"] = title
+				}
+				if desc != "" {
+					data["desc"] = desc
+				}
+				if content != "" {
+					data["content"] = content
+				}
+				data["modified_by"] = modifiedBy
+				models.EditArticle(id, data)
+				code = e.SUCCESS
+			} else {
+				code = e.ERROR_NOT_EXIST_TAG
+			}
+		} else {
+			code = e.ERROR_NOT_EXIST_ARTICLE
+		}
+	} else {
+		for _, err := range valid.Errors {
+			logging.Info(err.Key, err.Message)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code": code,
+		"msg":  e.GetMsg(code),
+		"data": make(map[string]string),
+	})
 }
 
 //删除文章
-func DeleteArticle(c *gin.Context)  {
-	
+func DeleteArticle(c *gin.Context) {
+	id := com.StrTo(c.Param("id")).MustInt()
+
+	valid := validation.Validation{}
+	valid.Min(id, 1, "id").Message("ID必须大于0")
+	code := e.INVALID_PARAMS
+	if !valid.HasErrors() {
+		if models.ExistArticleByID(id) {
+			models.DeleteArticle(id)
+			code = e.SUCCESS
+		} else {
+			code = e.ERROR_NOT_EXIST_ARTICLE
+		}
+	} else {
+		for _, err := range valid.Errors {
+			logging.Info(err.Key, err.Message)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code": code,
+		"msg":  e.GetMsg(code),
+		"data": make(map[string]string),
+	})
+
 }
